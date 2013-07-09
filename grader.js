@@ -22,10 +22,14 @@ References:
 */
 
 var fs = require('fs');
+var request = require('request')
+var util = require('util');
 var program = require('commander');
 var cheerio = require('cheerio');
+
 var HTMLFILE_DEFAULT = "index.html";
-var CHECKSFILE_DEFAULT = "checks.json";
+var URLFILE_DEFAULT = "http://secret-island-7827.herokuapp.com/";
+var CHECKSFILE_DEFAULT = "/coursera/grader/checks.json";
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
@@ -36,20 +40,25 @@ var assertFileExists = function(infile) {
     return instr;
 };
 
-var cheerioHtmlFile = function(htmlfile) {
-    return cheerio.load(fs.readFileSync(htmlfile));
-};
-
 var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
+var cheerioHtmlFile = function(htmlPath) {
+    return cheerio.load(fs.readFileSync(htmlPath));
+};
+
+var cheerioURLFile = function(htmlURL) {
+    return cheerio.load(htmlURL);
+};
+
 var checkHtmlFile = function(htmlfile, checksfile) {
-    $ = cheerioHtmlFile(htmlfile);
+    
     var checks = loadChecks(checksfile).sort();
+    
     var out = {};
     for(var ii in checks) {
-        var present = $(checks[ii]).length > 0;
+        var present = htmlfile(checks[ii]).length > 0;
         out[checks[ii]] = present;
     }
     return out;
@@ -61,14 +70,39 @@ var clone = function(fn) {
     return fn.bind({});
 };
 
+//--checks coursera/grader/checks.json --url http://secret-island-7827.herokuapp.com/
+//--checks coursera/grader/checks.json --file coursera/grader/index.html
 if(require.main == module) {
     program
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+        .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists))
+        .option('-u, --url  <html_url>', 'URL to index.html')
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+        
+    if(program.url){
+        
+        console.log("Validating URL: " + program.url);
+        
+        request(program.url, function(error, response, body) {
+            
+            var urlFile = cheerioURLFile(body);            
+            var checkJson = checkHtmlFile(urlFile, program.checks);
+            var outJson = JSON.stringify(checkJson, null, 4);
+            console.log(outJson);
+            
+        });
+        
+    } else if(program.file){
+        
+        console.log("Validating file: " + program.file);
+    
+        var htmlFile = cheerioHtmlFile(program.file);
+        var checkJson = checkHtmlFile(htmlFile, program.checks);
+        var outJson = JSON.stringify(checkJson, null, 4);
+
+        console.log(outJson);
+        
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
